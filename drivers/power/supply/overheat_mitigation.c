@@ -237,11 +237,21 @@ static int update_usb_status(struct overheat_info *ovh_info)
 	}
 
 	dev_dbg(ovh_info->dev, "Updating USB connected status\n");
+	/*
+	 * Update USB online status so that port_overheat_work can check it
+	 * before rescheduling.
+	 */
 	ret = PSY_GET_PROP(ovh_info->usb_psy, POWER_SUPPLY_PROP_ONLINE);
 	if (ret < 0)
 		return ret;
 	ovh_info->usb_online = ret;
 
+	/*
+	 * Update USB present status to determine if USB has been disconnected.
+	 * If we use USB online status to determine replug, we will need to
+	 * extend the delay between re-enabling CC detection and checking the
+	 * USB online status.
+	 */
 	ret = PSY_GET_PROP(ovh_info->usb_psy, POWER_SUPPLY_PROP_PRESENT);
 	if (ret < 0)
 		return ret;
@@ -380,9 +390,8 @@ static void port_overheat_work(struct work_struct *work)
 	if (ovh_info->overheat_mitigation || ovh_info->usb_online ||
 	    should_check_accessory(ovh_info))
 		goto rerun;
-	if (ovh_info->throttle_state)
-		goto rerun;
-	// Do not run again, USB port isn't overheated or connected to something
+
+	// Do not run again, USB port isn't overheated or registering as online
 	ovh_info->overheat_work_running = false;
 	__pm_relax(&ovh_info->overheat_ws);
 	return;
